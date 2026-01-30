@@ -58,6 +58,8 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
+    if sys.platform.startswith('linux'):
+        options.binary_location = "/usr/bin/chromium-browser"
     driver = None
     try:
         driver = webdriver.Chrome(
@@ -167,6 +169,8 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
     temp_dir = tempfile.mkdtemp()
     options.add_argument(f'--user-data-dir={temp_dir}')
+    if sys.platform.startswith('linux'):
+        options.binary_location = "/usr/bin/chromium-browser"
     driver = None
     try:
         driver = webdriver.Chrome(
