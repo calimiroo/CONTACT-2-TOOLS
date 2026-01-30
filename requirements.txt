@@ -1,3 +1,10 @@
-streamlit
-pandas
-openpyxl # لدعم قراءة ملفات Excel
+streamlit==1.38.0  # أحدث إصدار مستقر
+pandas==2.2.2
+undetected-chromedriver==3.5.5  # اللي في الكود
+selenium==4.24.0
+python-dateutil==2.9.0  # للـ datetime
+tempfile  # ده built-in، مش محتاج
+re  # built-in
+random  # built-in
+os  # built-in
+sys  # built-in
