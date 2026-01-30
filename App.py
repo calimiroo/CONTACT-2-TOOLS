@@ -74,13 +74,15 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
     version = get_chrome_version()
     driver = None
+    temp_driver_dir = tempfile.mkdtemp()
     try:
-        # Specify paths for cloud environment
+        patcher = uc.Patcher(data_path=temp_driver_dir)
+        patcher.auto()  # Download and patch chromedriver in temp dir
         driver = RobustChrome(
             options=options,
             version_main=version,
             browser_executable_path="/usr/bin/chromium",
-            driver_executable_path="/usr/bin/chromedriver"
+            driver_executable_path=patcher.executable_path
         )
         driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en ")
         time.sleep(random.uniform(3, 6) + wait_extra)
@@ -172,6 +174,9 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
         try:
             if driver:
                 driver.quit()
+            if os.path.exists(temp_driver_dir):
+                import shutil
+                shutil.rmtree(temp_driver_dir)
         except:
             pass
 def extract_dcd_single(eid, headless=True, wait_extra=0):
@@ -187,12 +192,15 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
     options.add_argument(f'--user-data-dir={temp_dir}')
     version = get_chrome_version()
     driver = None
+    temp_driver_dir = tempfile.mkdtemp()
     try:
+        patcher = uc.Patcher(data_path=temp_driver_dir)
+        patcher.auto()  # Download and patch chromedriver in temp dir
         driver = RobustChrome(
             options=options,
             version_main=version,
             browser_executable_path="/usr/bin/chromium",
-            driver_executable_path="/usr/bin/chromedriver"
+            driver_executable_path=patcher.executable_path
         )
         driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en ")
         WebDriverWait(driver, 20).until(EC.url_contains("authenticationendpoint"))
@@ -267,6 +275,8 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
             if os.path.exists(temp_dir):
                 import shutil
                 shutil.rmtree(temp_dir)
+            if os.path.exists(temp_driver_dir):
+                shutil.rmtree(temp_driver_dir)
         except:
             pass
 # --------------------------- STREAMLIT APP ---------------------------
@@ -280,7 +290,7 @@ if not st.session_state.authenticated:
         st.subheader('Protected Access')
         pwd = st.text_input('Password', type='password')
         if st.form_submit_button('Login'):
-            if pwd == st.secrets.get("APP_PASSWORD", "Hamada"):  # Use secret in cloud, fallback to default
+            if pwd == st.secrets.get("APP_PASSWORD", "Hamada"):
                 st.session_state.authenticated = True
                 st.rerun()
             else:
