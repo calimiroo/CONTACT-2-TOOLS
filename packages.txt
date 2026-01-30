@@ -1,0 +1,3 @@
+chromium-browser
+chromium-chromedriver
+xvfb  # للـ virtual display في headless، عشان يحل مشاكل الـ rendering
