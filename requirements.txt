@@ -1,10 +1,5 @@
-streamlit==1.38.0  # أحدث إصدار مستقر
+streamlit==1.38.0
 pandas==2.2.2
-undetected-chromedriver==3.5.5  # اللي في الكود
+undetected-chromedriver==3.5.5
 selenium==4.24.0
-python-dateutil==2.9.0  # للـ datetime
-tempfile  # ده built-in، مش محتاج
-re  # built-in
-random  # built-in
-os  # built-in
-sys  # built-in
+python-dateutil==2.9.0
