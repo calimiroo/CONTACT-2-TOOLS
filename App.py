@@ -68,23 +68,23 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
-    version = get_chrome_version()
+    version = get_chrome_version() # uc سيتولى اختيار ChromeDriver المتوافق تلقائيًا
     driver = None
     temp_driver_dir = tempfile.mkdtemp()
     try:
         patcher = uc.Patcher(data_path=temp_driver_dir)
-        patcher.auto()  # Download and patch chromedriver in temp dir
+        patcher.auto()  # Download and patch
+        os.chmod(patcher.executable_path, 0o755)  # Make executable to fix permission denied
         driver = RobustChrome(
             options=options,
             version_main=version,
-            browser_executable_path="/usr/bin/chromium",
+            browser_executable_path="/usr/bin/chromium" if sys.platform.startswith('linux') else None,
             driver_executable_path=patcher.executable_path
         )
-        driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en ")
+        driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en")
         time.sleep(random.uniform(3, 6) + wait_extra)
         # try to click English
         try:
@@ -191,18 +191,21 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
     temp_dir = tempfile.mkdtemp()
     options.add_argument(f'--user-data-dir={temp_dir}')
     version = get_chrome_version()
+    if not version:
+        version = None
     driver = None
     temp_driver_dir = tempfile.mkdtemp()
     try:
         patcher = uc.Patcher(data_path=temp_driver_dir)
-        patcher.auto()  # Download and patch chromedriver in temp dir
+        patcher.auto()  # Download and patch
+        os.chmod(patcher.executable_path, 0o755)  # Make executable
         driver = RobustChrome(
             options=options,
             version_main=version,
-            browser_executable_path="/usr/bin/chromium",
+            browser_executable_path="/usr/bin/chromium" if sys.platform.startswith('linux') else None,
             driver_executable_path=patcher.executable_path
         )
-        driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en ")
+        driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en")
         WebDriverWait(driver, 20).until(EC.url_contains("authenticationendpoint"))
         time.sleep(random.uniform(2, 4) + wait_extra)
         try:
