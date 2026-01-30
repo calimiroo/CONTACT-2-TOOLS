@@ -19,8 +19,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.core.os_manager import ChromeType
 # --------------------------- UTILS ---------------------------
 def beep():
     print("\a")  # Universal beep for all platforms
@@ -58,14 +56,11 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
-    if sys.platform.startswith('linux'):
-        options.binary_location = "/usr/bin/chromium-browser"
+    options.binary_location = "/usr/bin/chromium-browser"
     driver = None
     try:
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install()),
-            options=options
-        )
+        service = Service(executable_path="/usr/bin/chromedriver")
+        driver = webdriver.Chrome(service=service, options=options)
         driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en")
         time.sleep(random.uniform(3, 6) + wait_extra)
         # try to click English
@@ -169,14 +164,11 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
     temp_dir = tempfile.mkdtemp()
     options.add_argument(f'--user-data-dir={temp_dir}')
-    if sys.platform.startswith('linux'):
-        options.binary_location = "/usr/bin/chromium-browser"
+    options.binary_location = "/usr/bin/chromium-browser"
     driver = None
     try:
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install()),
-            options=options
-        )
+        service = Service(executable_path="/usr/bin/chromedriver")
+        driver = webdriver.Chrome(service=service, options=options)
         driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en")
         WebDriverWait(driver, 20).until(EC.url_contains("authenticationendpoint"))
         time.sleep(random.uniform(2, 4) + wait_extra)
