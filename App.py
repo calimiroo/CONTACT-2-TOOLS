@@ -13,12 +13,14 @@ import re
 from datetime import datetime, timedelta
 # Selenium
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-import subprocess
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.os_manager import ChromeType
 # --------------------------- UTILS ---------------------------
 def beep():
     print("\a")  # Universal beep for all platforms
@@ -48,23 +50,19 @@ def get_shadow_element(driver, selector):
         return None
 # --------------------------- EXTRACTORS ---------------------------
 def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
-    chrome_options = Options()
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--no-sandbox')
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
-    temp_dir = tempfile.mkdtemp()
-    os.environ["TMPDIR"] = temp_dir
-    os.environ["TEMP"] = temp_dir
-    os.environ["TMP"] = temp_dir
     driver = None
     try:
         driver = webdriver.Chrome(
-            options=chrome_options,
-            executable_path='/usr/bin/chromedriver' if sys.platform.startswith('linux') else None
+            service=Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install()),
+            options=options
         )
         driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en")
         time.sleep(random.uniform(3, 6) + wait_extra)
@@ -156,28 +154,24 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
         try:
             if driver:
                 driver.quit()
-            subprocess.run(["rm", "-rf", temp_dir], check=False)
         except:
             pass
 def extract_dcd_single(eid, headless=True, wait_extra=0):
-    chrome_options = Options()
-    chrome_options.add_argument('--headless=new')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--window-size=1920,1080')
-    chrome_options.add_argument('--lang=en-US')
-    chrome_options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
+    options = Options()
+    options.add_argument('--headless=new')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--lang=en-US')
+    options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
     temp_dir = tempfile.mkdtemp()
-    chrome_options.add_argument(f'--user-data-dir={temp_dir}')
-    os.environ["TMPDIR"] = temp_dir
-    os.environ["TEMP"] = temp_dir
-    os.environ["TMP"] = temp_dir
+    options.add_argument(f'--user-data-dir={temp_dir}')
     driver = None
     try:
         driver = webdriver.Chrome(
-            options=chrome_options,
-            executable_path='/usr/bin/chromedriver' if sys.platform.startswith('linux') else None
+            service=Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install()),
+            options=options
         )
         driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en")
         WebDriverWait(driver, 20).until(EC.url_contains("authenticationendpoint"))
@@ -249,7 +243,9 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
         try:
             if driver:
                 driver.quit()
-            subprocess.run(["rm", "-rf", temp_dir], check=False)
+            if os.path.exists(temp_dir):
+                import shutil
+                shutil.rmtree(temp_dir)
         except:
             pass
 # --------------------------- STREAMLIT APP ---------------------------
