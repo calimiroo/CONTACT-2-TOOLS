@@ -11,33 +11,17 @@ import sys
 import tempfile
 import re
 from datetime import datetime, timedelta
-# Selenium / undetected_chromedriver
-import undetected_chromedriver as uc
+# Selenium
+from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import subprocess
 # --------------------------- UTILS ---------------------------
 def beep():
     print("\a")  # Universal beep for all platforms
-def get_chrome_version():
-    if sys.platform.startswith('linux'):
-        return None  # Let uc handle in cloud
-    try:
-        if sys.platform == 'win32':
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon")
-            version, _ = winreg.QueryValueEx(key, "version")
-            return int(version.split('.')[0])
-    except Exception:
-        pass
-    return None
-class RobustChrome(uc.Chrome):
-    def __del__(self):
-        try:
-            self.quit()
-        except Exception:
-            pass
 def get_shadow_element(driver, selector):
     script = f"""
     function findInShadows(selector) {{
@@ -64,25 +48,23 @@ def get_shadow_element(driver, selector):
         return None
 # --------------------------- EXTRACTORS ---------------------------
 def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
-    options = uc.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
-    version = get_chrome_version() # uc سيتولى اختيار ChromeDriver المتوافق تلقائيًا
+    temp_dir = tempfile.mkdtemp()
+    os.environ["TMPDIR"] = temp_dir
+    os.environ["TEMP"] = temp_dir
+    os.environ["TMP"] = temp_dir
     driver = None
-    temp_driver_dir = tempfile.mkdtemp()
     try:
-        patcher = uc.Patcher(data_path=temp_driver_dir)
-        patcher.auto()  # Download and patch
-        os.chmod(patcher.executable_path, 0o755)  # Make executable to fix permission denied
-        driver = RobustChrome(
-            options=options,
-            version_main=version,
-            browser_executable_path="/usr/bin/chromium" if sys.platform.startswith('linux') else None,
-            driver_executable_path=patcher.executable_path
+        driver = webdriver.Chrome(
+            options=chrome_options,
+            executable_path='/usr/bin/chromedriver' if sys.platform.startswith('linux') else None
         )
         driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en")
         time.sleep(random.uniform(3, 6) + wait_extra)
@@ -174,36 +156,28 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
         try:
             if driver:
                 driver.quit()
-            if os.path.exists(temp_driver_dir):
-                import shutil
-                shutil.rmtree(temp_driver_dir)
+            subprocess.run(["rm", "-rf", temp_dir], check=False)
         except:
             pass
 def extract_dcd_single(eid, headless=True, wait_extra=0):
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument('--lang=en-US')
-    options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
+    chrome_options = Options()
+    chrome_options.add_argument('--headless=new')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--lang=en-US')
+    chrome_options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
     temp_dir = tempfile.mkdtemp()
-    options.add_argument(f'--user-data-dir={temp_dir}')
-    version = get_chrome_version()
-    if not version:
-        version = None
+    chrome_options.add_argument(f'--user-data-dir={temp_dir}')
+    os.environ["TMPDIR"] = temp_dir
+    os.environ["TEMP"] = temp_dir
+    os.environ["TMP"] = temp_dir
     driver = None
-    temp_driver_dir = tempfile.mkdtemp()
     try:
-        patcher = uc.Patcher(data_path=temp_driver_dir)
-        patcher.auto()  # Download and patch
-        os.chmod(patcher.executable_path, 0o755)  # Make executable
-        driver = RobustChrome(
-            options=options,
-            version_main=version,
-            browser_executable_path="/usr/bin/chromium" if sys.platform.startswith('linux') else None,
-            driver_executable_path=patcher.executable_path
+        driver = webdriver.Chrome(
+            options=chrome_options,
+            executable_path='/usr/bin/chromedriver' if sys.platform.startswith('linux') else None
         )
         driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en")
         WebDriverWait(driver, 20).until(EC.url_contains("authenticationendpoint"))
@@ -275,11 +249,7 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
         try:
             if driver:
                 driver.quit()
-            if os.path.exists(temp_dir):
-                import shutil
-                shutil.rmtree(temp_dir)
-            if os.path.exists(temp_driver_dir):
-                shutil.rmtree(temp_driver_dir)
+            subprocess.run(["rm", "-rf", temp_dir], check=False)
         except:
             pass
 # --------------------------- STREAMLIT APP ---------------------------
@@ -293,7 +263,7 @@ if not st.session_state.authenticated:
         st.subheader('Protected Access')
         pwd = st.text_input('Password', type='password')
         if st.form_submit_button('Login'):
-            if pwd == st.secrets.get("APP_PASSWORD", "Hamada"):
+            if pwd == 'Hamada':
                 st.session_state.authenticated = True
                 st.rerun()
             else:
@@ -302,10 +272,11 @@ if not st.session_state.authenticated:
 # --- app controls ---
 col_top = st.columns([2,1])
 with col_top[0]:
+    # TOOL1 افتراضيًا
     extractor_mode = st.selectbox(
         'Extractor Mode',
         ['Both (TOOL1 + TOOL2)', 'TOOL1 only', 'TOOL2 only'],
-        index=1
+        index=1 # هنا index=1 يجعل TOOL1 only هو الافتراضي
     )
 with col_top[1]:
     wait_multiplier = st.slider('Delay multiplier (speed vs reliability)', 0.0, 5.0, 0.5, 0.1)
