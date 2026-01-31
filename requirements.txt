@@ -1,6 +1,4 @@
 streamlit
 pandas
-selenium
 undetected-chromedriver
-setuptools
-openpyxl
+selenium
