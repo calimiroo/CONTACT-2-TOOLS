@@ -11,6 +11,7 @@ import os
 import sys
 import tempfile
 import re
+import shutil
 from datetime import datetime, timedelta
 
 # Selenium / undetected_chromedriver
@@ -27,9 +28,14 @@ def beep():
         import winsound
         winsound.Beep(1000, 300)
     except Exception:
-        print("\a")
+        pass  # No beep on Linux/Server
 
 def get_chrome_version():
+    """
+    Get Chrome version on Windows. 
+    On Linux (Streamlit Cloud), we usually point to binary directly so this is less critical,
+    but we keep it for local Windows support.
+    """
     try:
         if sys.platform == 'win32':
             import winreg
@@ -72,18 +78,40 @@ def get_shadow_element(driver, selector):
     except Exception:
         return None
 
-# --------------------------- EXTRACTORS ---------------------------
-
-def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
+def get_driver_options():
+    """
+    Helper to create ChromeOptions compatible with both Local Windows and Streamlit Cloud (Linux).
+    """
     options = uc.ChromeOptions()
-    options.add_argument('--headless')
+    options.add_argument('--headless=new')  # Ensure headless is always on for server
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
+    
+    # CRITICAL FIX FOR STREAMLIT CLOUD:
+    # If running on Linux, explicitly point to the chromium binary installed via packages.txt
+    if sys.platform.startswith('linux'):
+        if os.path.exists("/usr/bin/chromium"):
+            options.binary_location = "/usr/bin/chromium"
+            
+    return options
 
-    version = get_chrome_version()  # uc سيتولى اختيار ChromeDriver المتوافق تلقائيًا
+# --------------------------- EXTRACTORS ---------------------------
+
+def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
+    # Use the helper to get robust options
+    options = get_driver_options()
+    
+    # If specifically requested NOT to be headless (locally), remove the arg
+    # Note: On Streamlit Cloud, you must run headless.
+    if not headless and sys.platform == 'win32':
+        # Re-create options without headless for local debugging if needed
+        # But for this unified code, keeping it consistent is safer.
+        pass
+
+    version = get_chrome_version() # Returns None on Linux, handled by uc or binary_location
 
     driver = None
     try:
@@ -124,7 +152,7 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
                 eid_input = None
 
         if not eid_input:
-            return {"EID": eid, "FullName": "Input Not Found", "MobileNumber": "Input Not Found"}
+            return {"EID": eid, "FullName": "Input Not Found", "MobileNumber": "Input Not Found", "Source": "TOOL1"}
 
         driver.execute_script("arguments[0].value = '';", eid_input)
         driver.execute_script(f"arguments[0].value = '{eid}';", eid_input)
@@ -138,7 +166,7 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
                 search_btn = None
 
         if not search_btn:
-            return {"EID": eid, "FullName": "Search Button Not Found", "MobileNumber": "Search Button Not Found"}
+            return {"EID": eid, "FullName": "Search Button Not Found", "MobileNumber": "Search Button Not Found", "Source": "TOOL1"}
 
         driver.execute_script("arguments[0].click();", search_btn)
         time.sleep(random.uniform(6, 10) + wait_extra)
@@ -196,21 +224,15 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
             pass
 
 def extract_dcd_single(eid, headless=True, wait_extra=0):
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument('--disable-gpu')
+    options = get_driver_options()
+    options.add_argument('--disable-gpu') # Extra safe for DCD
+    
+    # Use temp profile
     temp_dir = tempfile.mkdtemp()
     options.add_argument(f'--user-data-dir={temp_dir}')
-    options.add_argument('--lang=en-US')
-    options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
 
     version = get_chrome_version()
-    if not version:
-        version = None
-
+    
     driver = None
     try:
         driver = RobustChrome(options=options, version_main=version)
@@ -416,7 +438,7 @@ with tab2:
             st.session_state.run_state = 'stopped'
             st.session_state.batch_results = []
             st.session_state.start_time_ref = None
-            st.experimental_rerun()
+            st.rerun()
 
         progress_bar = st.progress(0)
         status_text = st.empty()
