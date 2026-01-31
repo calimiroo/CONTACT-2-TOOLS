@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import re
+import subprocess
 from datetime import datetime, timedelta
 # Selenium / undetected_chromedriver
 import undetected_chromedriver as uc
@@ -34,6 +35,14 @@ def get_chrome_version():
     except Exception:
         pass
     return None
+def get_chrome_version_linux():
+    try:
+        version_str = subprocess.check_output(['chromium', '--version']).decode('utf-8').strip()
+        # Assuming output like "Chromium 144.0.7559.109"
+        version = version_str.split(' ')[1].split('.')[0]
+        return int(version)
+    except Exception:
+        return None
 class RobustChrome(uc.Chrome):
     def __del__(self):
         try:
@@ -75,11 +84,13 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-software-rasterizer')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
-    # version = get_chrome_version()  # Commented out for cloud compatibility; undetected_chromedriver will auto-detect
-    version = None
+    browser_path = '/usr/bin/chromium' if os.name != 'nt' else None
+    version = get_chrome_version_linux() if os.name != 'nt' else get_chrome_version()
+    if version is None:
+        version = 144  # Fallback to known version from error
     driver = None
     try:
-        driver = RobustChrome(options=options, version_main=version)
+        driver = RobustChrome(options=options, version_main=version, browser_executable_path=browser_path)
         driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en")
         time.sleep(random.uniform(3, 6) + wait_extra)
         # try to click English
@@ -184,11 +195,13 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
     options.add_argument(f'--user-data-dir={temp_dir}')
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
-    # version = get_chrome_version()  # Commented out for cloud compatibility
-    version = None
+    browser_path = '/usr/bin/chromium' if os.name != 'nt' else None
+    version = get_chrome_version_linux() if os.name != 'nt' else get_chrome_version()
+    if version is None:
+        version = 144  # Fallback to known version from error
     driver = None
     try:
-        driver = RobustChrome(options=options, version_main=version)
+        driver = RobustChrome(options=options, version_main=version, browser_executable_path=browser_path)
         driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en")
         WebDriverWait(driver, 20).until(EC.url_contains("authenticationendpoint"))
         time.sleep(random.uniform(2, 4) + wait_extra)
