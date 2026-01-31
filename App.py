@@ -11,8 +11,8 @@ import os
 import sys
 import tempfile
 import re
-import shutil
 from datetime import datetime, timedelta
+import shutil
 
 # Selenium / undetected_chromedriver
 import undetected_chromedriver as uc
@@ -28,13 +28,12 @@ def beep():
         import winsound
         winsound.Beep(1000, 300)
     except Exception:
-        pass  # No beep on Linux/Server
+        pass
 
 def get_chrome_version():
     """
     Get Chrome version on Windows. 
-    On Linux (Streamlit Cloud), we usually point to binary directly so this is less critical,
-    but we keep it for local Windows support.
+    On Linux (Streamlit Cloud), we rely on the installed package.
     """
     try:
         if sys.platform == 'win32':
@@ -80,42 +79,42 @@ def get_shadow_element(driver, selector):
 
 def get_driver_options():
     """
-    Helper to create ChromeOptions compatible with both Local Windows and Streamlit Cloud (Linux).
+    Creates ChromeOptions compatible with both Local Windows and Streamlit Cloud (Linux).
     """
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')  # Ensure headless is always on for server
+    options.add_argument('--headless=new')  # Mandatory for server
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
     
-    # CRITICAL FIX FOR STREAMLIT CLOUD:
-    # If running on Linux, explicitly point to the chromium binary installed via packages.txt
+    # CRITICAL FIX FOR STREAMLIT CLOUD LINUX:
+    # Explicitly point to the chromium binary installed via packages.txt
     if sys.platform.startswith('linux'):
-        if os.path.exists("/usr/bin/chromium"):
-            options.binary_location = "/usr/bin/chromium"
+        # Common paths for chromium on Debian/Ubuntu
+        possible_paths = ["/usr/bin/chromium", "/usr/bin/chromium-browser"]
+        for path in possible_paths:
+            if os.path.exists(path):
+                options.binary_location = path
+                break
             
     return options
 
 # --------------------------- EXTRACTORS ---------------------------
 
 def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
-    # Use the helper to get robust options
     options = get_driver_options()
-    
-    # If specifically requested NOT to be headless (locally), remove the arg
-    # Note: On Streamlit Cloud, you must run headless.
-    if not headless and sys.platform == 'win32':
-        # Re-create options without headless for local debugging if needed
-        # But for this unified code, keeping it consistent is safer.
-        pass
-
-    version = get_chrome_version() # Returns None on Linux, handled by uc or binary_location
+    version = get_chrome_version() 
 
     driver = None
     try:
-        driver = RobustChrome(options=options, version_main=version)
+        # Use version_main only if we found a version (Windows), otherwise let UC decide
+        if version:
+            driver = RobustChrome(options=options, version_main=version)
+        else:
+            driver = RobustChrome(options=options)
+            
         driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en")
         time.sleep(random.uniform(3, 6) + wait_extra)
 
@@ -225,7 +224,7 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
 
 def extract_dcd_single(eid, headless=True, wait_extra=0):
     options = get_driver_options()
-    options.add_argument('--disable-gpu') # Extra safe for DCD
+    options.add_argument('--disable-gpu')
     
     # Use temp profile
     temp_dir = tempfile.mkdtemp()
@@ -235,7 +234,11 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
     
     driver = None
     try:
-        driver = RobustChrome(options=options, version_main=version)
+        if version:
+            driver = RobustChrome(options=options, version_main=version)
+        else:
+            driver = RobustChrome(options=options)
+
         driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en")
         WebDriverWait(driver, 20).until(EC.url_contains("authenticationendpoint"))
         time.sleep(random.uniform(2, 4) + wait_extra)
@@ -318,6 +321,12 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
                 driver.quit()
         except:
             pass
+        # Clean up temp dir
+        try:
+            if 'temp_dir' in locals() and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+        except:
+            pass
 
 # --------------------------- STREAMLIT APP ---------------------------
 
@@ -343,16 +352,14 @@ if not st.session_state.authenticated:
 # --- app controls ---
 col_top = st.columns([2,1])
 with col_top[0]:
-    # TOOL1 افتراضيًا
     extractor_mode = st.selectbox(
         'Extractor Mode',
         ['Both (TOOL1 + TOOL2)', 'TOOL1 only', 'TOOL2 only'],
-        index=1  # هنا index=1 يجعل TOOL1 only هو الافتراضي
+        index=1  
     )
 with col_top[1]:
-    wait_multiplier = st.slider('Delay multiplier (speed vs reliability)', 0.0, 5.0, 0.5, 0.1)
+    wait_multiplier = st.slider('Delay multiplier', 0.0, 5.0, 0.5, 0.1)
 
-# helper to run chosen extractors
 def run_extractors_on_eid(eid):
     results = []
     if extractor_mode in ['Both (TOOL1 + TOOL2)', 'TOOL1 only']:
@@ -404,7 +411,6 @@ with tab2:
             st.error(f'Error reading file: {e}')
             st.stop()
 
-        # find column
         possible_cols = [c for c in df_in.columns if c.lower() in ['eid', 'emirates id', 'emiratesid', 'id']]
         if not possible_cols:
             st.warning("Couldn't find an EID column automatically. Please map the column below.")
@@ -416,7 +422,6 @@ with tab2:
         else:
             eid_series = df_in[possible_cols[0]].astype(str).str.strip()
 
-        # dedupe and cleanup
         eids = eid_series.dropna().unique().tolist()
         st.write(f'Total unique EIDs: {len(eids)}')
 
