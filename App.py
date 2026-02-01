@@ -1,431 +1,260 @@
-# Merged Streamlit app using Option-1 (TOOL1) and Option-2 (TOOL2) extractors
-# Filename: Option-1-2_Merged_Streamlit_App_Headless.py
-# Usage: pip install -r requirements.txt
-# Run: streamlit run Option-1-2_Merged_Streamlit_App_Headless.py
 import streamlit as st
 import pandas as pd
 import time
-import random
-import os
-import sys
-import tempfile
-import re
-import subprocess
 from datetime import datetime, timedelta
-# Selenium / undetected_chromedriver
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+
 # --------------------------- UTILS ---------------------------
+
 def beep():
     try:
         import winsound
         winsound.Beep(1000, 300)
     except Exception:
         print("\a")
-def get_chrome_version():
-    try:
-        if sys.platform == 'win32':
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon")
-            version, _ = winreg.QueryValueEx(key, "version")
-            return int(version.split('.')[0])
-    except Exception:
-        pass
-    return None
-def get_chrome_version_linux():
-    try:
-        version_str = subprocess.check_output(['chromium', '--version']).decode('utf-8').strip()
-        # Assuming output like "Chromium 144.0.7559.109"
-        version = version_str.split(' ')[1].split('.')[0]
-        return int(version)
-    except Exception:
-        return None
-class RobustChrome(uc.Chrome):
-    def __del__(self):
-        try:
-            self.quit()
-        except Exception:
-            pass
-def get_shadow_element(driver, selector):
-    script = f"""
-    function findInShadows(selector) {{
-        function search(root) {{
-            if (!root) return null;
-            const found = root.querySelector(selector);
-            if (found) return found;
-            const all = root.querySelectorAll('*');
-            for (const el of all) {{
-                if (el.shadowRoot) {{
-                    const result = search(el.shadowRoot);
-                    if (result) return result;
-                }}
-            }}
-            return null;
-        }}
-        return search(document);
-    }}
-    return findInShadows('{selector}');
+
+def format_time(seconds):
+    seconds = int(seconds)
+    return f"{seconds // 3600:02d}:{(seconds % 3600) // 60:02d}:{seconds % 60:02d}"
+
+# --------------------------- MOCK EXTRACTORS (Links Only) ---------------------------
+# نظرًا لقيود الأمان على المواقع الحكومية، لا يمكن استخراج البيانات تلقائيًا.
+# نستخدم دوال تُنشئ روابط مباشرة للمستخدم لفتحها يدويًا.
+
+def extract_mohre_single_manual(eid, headless=True, lang_force=True, wait_extra=0):
     """
-    try:
-        return driver.execute_script(script)
-    except Exception:
-        return None
-# --------------------------- EXTRACTORS ---------------------------
-def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
-    options = uc.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument('--lang=en-US')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--disable-software-rasterizer')
-    options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
-    browser_path = '/usr/bin/chromium' if os.name != 'nt' else None
-    version = get_chrome_version_linux() if os.name != 'nt' else get_chrome_version()
-    if version is None:
-        version = 144  # Fallback to known version from error
-    driver = None
-    try:
-        driver = RobustChrome(options=options, version_main=version, browser_executable_path=browser_path)
-        driver.get("https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en")
-        time.sleep(random.uniform(3, 6) + wait_extra)
-        # try to click English
-        try:
-            lang_btn = None
-            try:
-                lang_btn = driver.find_element(By.XPATH, "//a[contains(text(), 'English')]")
-            except:
-                try:
-                    lang_btn = driver.find_element(By.XPATH, "//span[contains(text(), 'English')]")
-                except:
-                    pass
-            if lang_btn and lang_btn.is_displayed():
-                driver.execute_script("arguments[0].click();", lang_btn)
-                time.sleep(1)
-        except:
-            pass
-        # select employee if necessary
-        try:
-            emp_btn = driver.find_element(By.ID, "employeeLink")
-            driver.execute_script("arguments[0].click();", emp_btn)
-            time.sleep(1)
-        except:
-            pass
-        # fill EID
-        eid_input = get_shadow_element(driver, '#IdentityNumber')
-        if not eid_input:
-            try:
-                eid_input = driver.find_element(By.ID, "EIDA")
-            except:
-                eid_input = None
-        if not eid_input:
-            return {"EID": eid, "FullName": "Input Not Found", "MobileNumber": "Input Not Found"}
-        driver.execute_script("arguments[0].value = '';", eid_input)
-        driver.execute_script(f"arguments[0].value = '{eid}';", eid_input)
-        time.sleep(0.5)
-        search_btn = get_shadow_element(driver, '#btnSearchEIDA')
-        if not search_btn:
-            try:
-                search_btn = driver.find_element(By.ID, "workderUid")
-            except:
-                search_btn = None
-        if not search_btn:
-            return {"EID": eid, "FullName": "Search Button Not Found", "MobileNumber": "Search Button Not Found"}
-        driver.execute_script("arguments[0].click();", search_btn)
-        time.sleep(random.uniform(6, 10) + wait_extra)
-        full_name_el = get_shadow_element(driver, '#FullName')
-        if not full_name_el:
-            try:
-                full_name_el = driver.find_element(By.ID, "CallerName")
-            except:
-                full_name_el = None
-        name = 'Not Found'
-        try:
-            if full_name_el:
-                name = driver.execute_script("return arguments[0] ? (arguments[0].value || arguments[0].innerText) : 'Not Found';", full_name_el)
-        except:
-            name = 'Not Found'
-        if lang_force and re.search(r'[\u0600-\u06FF]', name or ''):
-            try:
-                driver.execute_script("window.location.href = window.location.href.split('?')[0] + '?lang=en';")
-                time.sleep(2)
-                full_name_el = get_shadow_element(driver, '#FullName')
-                if full_name_el:
-                    name = driver.execute_script("return arguments[0] ? (arguments[0].value || arguments[0].innerText) : 'Not Found';", full_name_el)
-            except:
-                pass
-        mobile = 'Not Found'
-        try:
-            unmasked_el = get_shadow_element(driver, '#employeeMobile')
-            if not unmasked_el:
-                try:
-                    unmasked_el = driver.find_element(By.ID, "employeeMobile")
-                except:
-                    unmasked_el = None
-            if unmasked_el:
-                mobile = driver.execute_script("return arguments[0].value || arguments[0].innerText || 'Not Found';", unmasked_el)
-            else:
-                visible_mobile_el = get_shadow_element(driver, '#MobileNumber')
-                if visible_mobile_el:
-                    mobile = driver.execute_script("return arguments[0].getAttribute('title') || arguments[0].value || arguments[0].innerText || 'Not Found';", visible_mobile_el)
-        except:
-            mobile = 'Not Found'
-        return {"EID": eid, "FullName": name or 'Not Found', "MobileNumber": mobile or 'Not Found', "Source": "TOOL1"}
-    except Exception as e:
-        return {"EID": eid, "FullName": "Error", "MobileNumber": str(e), "Source": "TOOL1"}
-    finally:
-        try:
-            if driver:
-                driver.quit()
-        except:
-            pass
-def extract_dcd_single(eid, headless=True, wait_extra=0):
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--disable-software-rasterizer')
-    temp_dir = tempfile.mkdtemp()
-    options.add_argument(f'--user-data-dir={temp_dir}')
-    options.add_argument('--lang=en-US')
-    options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
-    browser_path = '/usr/bin/chromium' if os.name != 'nt' else None
-    version = get_chrome_version_linux() if os.name != 'nt' else get_chrome_version()
-    if version is None:
-        version = 144  # Fallback to known version from error
-    driver = None
-    try:
-        driver = RobustChrome(options=options, version_main=version, browser_executable_path=browser_path)
-        driver.get("https://dcdigitalservices.dubaichamber.com/?lang=en")
-        WebDriverWait(driver, 20).until(EC.url_contains("authenticationendpoint"))
-        time.sleep(random.uniform(2, 4) + wait_extra)
-        try:
-            sign_up_xpath = '//a[contains(text(), "Sign Up") or contains(text(), "Register") or contains(text(), "Create Account") or contains(text(), "Don\'t have an account") or contains(@id, "signUp")] | //button[contains(text(), "Sign Up") or contains(text(), "Register") or contains(text(), "Create Account") or contains(text(), "Don\'t have an account") or contains(@id, "signUp")]'
-            sign_up_link = WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.XPATH, sign_up_xpath)))
-            driver.execute_script("arguments[0].click();", sign_up_link)
-            time.sleep(random.uniform(3, 6) + wait_extra)
-        except Exception as e:
-            return {"EID": eid, "FullName": "Sign Up Not Found", "MobileNumber": "Sign Up Not Found", "Source": "TOOL2"}
-        try:
-            continue_btn_xpath = '//button[contains(text(), "Continue with email") or contains(text(), "Continue with Email") or contains(text(), "email/emiratesId") or contains(text(), "Email/Emirates ID") or contains(text(), "Basic") or contains(@id, "basicAuthenticator")]' 
-            continue_btn = WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.XPATH, continue_btn_xpath)))
-            driver.execute_script("arguments[0].click();", continue_btn)
-            time.sleep(random.uniform(3, 6) + wait_extra)
-        except Exception:
-            pass
-        try:
-            uae_resident_select = WebDriverWait(driver, 8).until(EC.presence_of_element_located((By.ID, "uaeResident")))
-            driver.execute_script("arguments[0].value = 'yes';", uae_resident_select)
-            driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", uae_resident_select)
-            time.sleep(1)
-        except:
-            pass
-        try:
-            eid_input = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "emiratesId")))
-            driver.execute_script("arguments[0].value = '';", eid_input)
-            driver.execute_script(f"arguments[0].value = '{eid}';", eid_input)
-            time.sleep(0.5)
-            driver.execute_script("arguments[0].blur();", eid_input)
-            eid_input.send_keys(Keys.TAB)
-            time.sleep(random.uniform(4, 8) + wait_extra)
-            def is_first_name_present(drv):
-                try:
-                    el = drv.find_element(By.ID, "firstNameUserInput")
-                    value = el.get_attribute("value")
-                    return bool(value and value != '')
-                except:
-                    return False
-            try:
-                WebDriverWait(driver, 30).until(is_first_name_present)
-            except:
-                return {"EID": eid, "FullName": "Timeout/Not Found", "MobileNumber": "Timeout/Not Found", "Source": "TOOL2"}
-            def get_value_by_id(id_str):
-                try:
-                    el = driver.find_element(By.ID, id_str)
-                    value = el.get_attribute("value") or el.text or 'Not Found'
-                    return value
-                except:
-                    return 'Not Found'
-            first_name = get_value_by_id("firstNameUserInput")
-            last_name = get_value_by_id("lastNameUserInput")
-            full_name = f"{first_name} {last_name}".strip() if first_name != 'Not Found' else 'Not Found'
-            email = get_value_by_id("usernameUserInput")
-            mobile = get_value_by_id("mobileNumber")
-            return {
-                "EID": eid,
-                "FullName": full_name or 'Not Found',
-                "MobileNumber": mobile or 'Not Found',
-                "Email": email or 'Not Found',
-                "Source": "TOOL2"
-            }
-        except Exception as e:
-            return {"EID": eid, "FullName": "Error", "MobileNumber": str(e), "Source": "TOOL2"}
-    except Exception as e:
-        return {"EID": eid, "FullName": "Critical Error", "MobileNumber": str(e), "Source": "TOOL2"}
-    finally:
-        try:
-            if driver:
-                driver.quit()
-        except:
-            pass
-# --------------------------- STREAMLIT APP ---------------------------
-st.set_page_config(page_title="HAMADA TRACING - Unified", layout="wide")
-st.title("HAMADA TRACING")
-# --- auth ---
+    دالة لاستخراج معلومات من MOHRE.
+    نظرًا لقيود الأمان، نُنشئ رابطًا مباشرًا فقط.
+    """
+    base_url = "https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en"
+    return {
+        "EID": eid,
+        "FullName": "Manual Verification Required",
+        "MobileNumber": "Not Available",
+        "Source": "TOOL1-LINK",
+        "Verification_Link": base_url
+    }
+
+def extract_dcd_single_manual(eid, headless=True, wait_extra=0):
+    """
+    دالة لاستخراج معلومات من DCD.
+    نستخدم رابطًا وهميًا كمثال. قم بتعديله.
+    """
+    base_url = "https://dcdigitalservices.dubaichamber.com/?lang=en"
+    return {
+        "EID": eid,
+        "FullName": "Manual Verification Required",
+        "MobileNumber": "Not Available",
+        "Email": "Not Available",
+        "Source": "TOOL2-LINK",
+        "Verification_Link": base_url
+    }
+
+def search_icp_manual(passport_no, nationality, target_url):
+    """
+    دالة لعرض رابط فتح صفحة ICP.
+    نظرًا لقيود الأمان، نُنشئ رابطًا مباشرًا فقط.
+    """
+    return {
+        "Passport Number": passport_no,
+        "Nationality": nationality,
+        "Unified Number": "Manual Verification Required",
+        "Status": "Link Generated",
+        "Verification_Link": target_url
+    }
+
+# --------------------------- LIST OF COUNTRIES (From Original Code) ---------------------------
+countries = [
+    "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+    "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia",
+    "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
+    "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)",
+    "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo",
+    "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea",
+    "Estonia", "Eswatini (fmr. \"Swaziland\")", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany",
+    "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary",
+    "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan",
+    "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein",
+    "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania",
+    "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar (formerly Burma)",
+    "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia",
+    "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines",
+    "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines",
+    "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore",
+    "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka",
+    "Sudan", "Suriname", "Sweden", "Switzerland", "Syrian Arab Republic", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste",
+    "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates",
+    "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+]
+
+# --------------------------- SESSION STATE MANAGEMENT ---------------------------
+
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
+if 'batch_results' not in st.session_state:
+    st.session_state.batch_results = []
+if 'current_index' not in st.session_state:
+    st.session_state.current_index = 0
+if 'found_counter' not in st.session_state:
+    st.session_state.found_counter = 0
+if 'accumulated_time' not in st.session_state:
+    st.session_state.accumulated_time = 0.0
+if 'single_res' not in st.session_state:
+    st.session_state.single_res = None
+if 'run_state' not in st.session_state:
+    st.session_state.run_state = 'idle'
+
+# --------------------------- LOGIN LOGIC ---------------------------
+
 if not st.session_state.authenticated:
-    with st.form('login'):
-        st.subheader('Protected Access')
-        pwd = st.text_input('Password', type='password')
-        if st.form_submit_button('Login'):
-            if pwd == 'Hamada':
+    with st.form("login_form"):
+        pwd_input = st.text_input("Enter Password", type="password")
+        if st.form_submit_button("Login"):
+            if pwd_input == "Bilkish": # يمكنك تغيير "Bilkish" إلى "Hamada" إذا كنت تستخدمها
                 st.session_state.authenticated = True
                 st.rerun()
             else:
-                st.error('Wrong password')
+                st.error("Incorrect Password.")
     st.stop()
-# --- app controls ---
-col_top = st.columns([2,1])
-with col_top[0]:
-    # TOOL1 only as default
-    extractor_mode = st.selectbox(
+
+# --------------------------- COLOR STYLING FOR DATAFRAME ---------------------------
+
+def color_status(val):
+    if val == 'Found': 
+        return 'background-color: #90EE90'
+    if val == 'Not Found': 
+        return 'background-color: #FFCCCB'
+    if val == 'Link Generated':
+        return 'background-color: #ADD8E6'  # Light blue for manual links
+    return 'background-color: #FFA500'
+
+# --------------------------- MAIN APP UI ---------------------------
+
+st.set_page_config(page_title="Unified Verification Tool - Manual", layout="wide")
+st.title("🔍 Unified Verification Tool (Manual)")
+
+# --- Tabs for ICP and MOHRE/DCD ---
+tab1, tab2 = st.tabs(["ICP Passport Lookup", "MOHRE/DCD EID Lookup"])
+
+# --- ICP Tab ---
+with tab1:
+    st.subheader("🔍 ICP Passport Unified Number Lookup")
+    c1, c2 = st.columns(2)
+    p_in = c1.text_input("Passport Number", key="single_p")
+    n_in = c2.selectbox("Nationality", countries, key="single_n")
+    
+    if st.button("🔍 Generate ICP Link"):
+        if p_in and n_in:
+            with st.spinner("Preparing link..."):
+                target_url = "https://smartservices.icp.gov.ae/echannels/web/client/guest/index.html#/leavePermit/588/step1?administrativeRegionId=1&withException=false"
+                res = search_icp_manual(p_in.strip(), n_in.strip().upper(), target_url)
+                
+                st.success(f"✅ Link Generated Successfully")
+                st.link_button("🌐 Open ICP Verification Page", target_url, type="primary")
+                
+                st.info("""
+                📌 **Important Notes for ICP:**
+                - The site requires **manual input** of Passport Number and Nationality.
+                - **Automatic extraction is not possible** due to security measures.
+                - Use the link above to open the page and complete the process manually.
+                """)
+        else:
+            st.warning("Please enter both Passport Number and Nationality.")
+
+    # --- ICP Batch ---
+    st.subheader("📊 ICP Excel Batch Processing (Links Only)")
+    uploaded_icp = st.file_uploader("Upload Excel File for ICP (Columns: 'Passport Number', 'Nationality')", type=["xlsx"], key="icp_upload")
+    
+    if uploaded_icp:
+        try:
+            df_icp = pd.read_excel(uploaded_icp)
+            required_cols = ['Passport Number', 'Nationality']
+            if not all(col in df_icp.columns for col in required_cols):
+                st.error(f"Excel file must contain columns: {required_cols}")
+                st.stop()
+            
+            records_icp = df_icp[required_cols].dropna().to_dict('records')
+            st.write(f"Found {len(records_icp)} records in the ICP file.")
+            
+            if st.button("Generate All ICP Links", key="gen_icp"):
+                st.success("🔗 Generated ICP Links:")
+                for i, record in enumerate(records_icp, 1):
+                    passport_no = str(record['Passport Number']).strip()
+                    nationality = str(record['Nationality']).strip().upper()
+                    st.write(f"{i}. [Open ICP for {passport_no} ({nationality})](https://smartservices.icp.gov.ae/echannels/web/client/guest/index.html#/leavePermit/588/step1?administrativeRegionId=1&withException=false)")
+                    
+        except Exception as e:
+            st.error(f"Error reading ICP file: {e}")
+
+# --- MOHRE/DCD Tab ---
+with tab2:
+    st.subheader("🔍 MOHRE/DCD Emirates ID Lookup")
+    c1_m, c2_m = st.columns([2,1])
+    eid_input = c1_m.text_input('Enter Emirates ID (only digits)')
+    extractor_mode = c2_m.selectbox(
         'Extractor Mode',
         ['Both (TOOL1 + TOOL2)', 'TOOL1 only', 'TOOL2 only'],
-        index=1  # index=1 makes TOOL1 only the default
+        index=1  # TOOL1 only default
     )
-with col_top[1]:
-    wait_multiplier = st.slider('Delay multiplier (speed vs reliability)', 0.0, 5.0, 0.5, 0.1)
-# helper to run chosen extractors
-def run_extractors_on_eid(eid):
-    results = []
-    if extractor_mode in ['Both (TOOL1 + TOOL2)', 'TOOL1 only']:
-        res1 = extract_mohre_single(eid, headless=True, wait_extra=wait_multiplier)
-        if res1:
-            results.append(res1)
-    if extractor_mode in ['Both (TOOL1 + TOOL2)', 'TOOL2 only']:
-        res2 = extract_dcd_single(eid, headless=True, wait_extra=wait_multiplier)
-        if res2:
-            results.append(res2)
-    return results
-# ---------- SINGLE SEARCH ----------
-tab1, tab2 = st.tabs(['Single EID Search', 'Batch (Upload Excel)'])
-with tab1:
-    st.subheader('Single Emirates ID lookup')
-    c1, c2 = st.columns([3,1])
-    eid_input = c1.text_input('Enter Emirates ID (only digits)')
-    if c2.button('Search'):
+
+    if c2_m.button('Get Links'):
         if not eid_input or not str(eid_input).strip():
             st.warning('Enter a valid Emirates ID')
         else:
-            with st.spinner('Running extractors...'):
+            with st.spinner('Generating links...'):
                 start = time.time()
-                aggregated = run_extractors_on_eid(str(eid_input).strip())
-                if not aggregated:
-                    st.error('No results found or both extractors failed.')
+                results = []
+                if extractor_mode in ['Both (TOOL1 + TOOL2)', 'TOOL1 only']:
+                    res1 = extract_mohre_single_manual(str(eid_input).strip())
+                    results.append(res1)
+                if extractor_mode in ['Both (TOOL1 + TOOL2)', 'TOOL2 only']:
+                    res2 = extract_dcd_single_manual(str(eid_input).strip())
+                    results.append(res2)
+                
+                if not results:
+                    st.error('No links generated.')
                 else:
-                    df = pd.DataFrame(aggregated)
-                    st.write('Live results:')
+                    df = pd.DataFrame(results)
+                    st.write('Verification Links:')
+                    for _, row in df.iterrows():
+                        st.write(f"**{row['Source']} Link:**")
+                        st.link_button("🔗 Open Verification Page", row['Verification_Link'], type="secondary")
+                    
                     st.dataframe(df)
-                    st.download_button('Download results (CSV)', df.to_csv(index=False).encode('utf-8'), file_name=f'result_{eid_input}.csv')
-                    beep()
-                    st.success(f'Finished in {int(time.time()-start)}s')
-# ---------- BATCH PROCESSING ----------
-with tab2:
-    st.subheader('Batch Excel upload - one column with header "EID" or "Emirates Id"')
-    uploaded = st.file_uploader('Upload .xlsx or .csv file', type=['xlsx', 'csv'])
-    if uploaded:
+                    st.success(f'Links ready in {int(time.time()-start)}s')
+
+    # --- MOHRE/DCD Batch ---
+    st.subheader("📊 MOHRE/DCD Excel Batch Upload")
+    uploaded_mohre = st.file_uploader('Upload .xlsx or .csv file for MOHRE/DCD', type=['xlsx', 'csv'], key="mohre_upload")
+
+    if uploaded_mohre:
         try:
-            if uploaded.name.lower().endswith('.csv'):
-                df_in = pd.read_csv(uploaded, dtype=str)
+            if uploaded_mohre.name.lower().endswith('.csv'):
+                df_in = pd.read_csv(uploaded_mohre, dtype=str)
             else:
-                df_in = pd.read_excel(uploaded, dtype=str)
+                df_in = pd.read_excel(uploaded_mohre, dtype=str)
+
+            possible_cols = [c for c in df_in.columns if c.lower() in ['eid', 'emirates id', 'emiratesid', 'id']]
+            if not possible_cols:
+                st.warning("Couldn't find an EID column automatically. Please map the column below.")
+                col_map = st.selectbox('Map EID column', options=['--select--'] + list(df_in.columns.tolist()), key="mohre_col_map")
+                if col_map and col_map != '--select--':
+                    eid_series = df_in[col_map].astype(str).str.strip()
+                else:
+                    st.stop()
+            else:
+                eid_series = df_in[possible_cols[0]].astype(str).str.strip()
+
+            eids = eid_series.dropna().unique().tolist()
+            st.write(f'Total unique EIDs: {len(eids)}')
+
+            if st.button("Generate All MOHRE/DCD Links", key="gen_mohre"):
+                st.success("🔗 Generated MOHRE/DCD Links:")
+                for i, eid in enumerate(eids, 1):
+                    if len(eid) == 15 and eid.isdigit():
+                        st.write(f"{i}. [MOHRE - {eid}](https://backoffice.mohre.gov.ae/mohre.complaints.app/freezoneAnonymous2/ComplaintVerification?lang=en)")
+                        st.write(f"{i}. [DCD - {eid}](https://dcdigitalservices.dubaichamber.com/?lang=en)")
+                    else:
+                        st.write(f"{i}. ❌ Invalid EID: `{eid}`")
+                        
         except Exception as e:
             st.error(f'Error reading file: {e}')
-            st.stop()
-        # find column
-        possible_cols = [c for c in df_in.columns if c.lower() in ['eid', 'emirates id', 'emiratesid', 'id']]
-        if not possible_cols:
-            st.warning("Couldn't find an EID column automatically. Please map the column below.")
-            col_map = st.selectbox('Map EID column', options=['--select--'] + list(df_in.columns.tolist()))
-            if col_map and col_map != '--select--':
-                eid_series = df_in[col_map].astype(str).str.strip()
-            else:
-                st.stop()
-        else:
-            eid_series = df_in[possible_cols[0]].astype(str).str.strip()
-        # dedupe and cleanup
-        eids = eid_series.dropna().unique().tolist()
-        st.write(f'Total unique EIDs: {len(eids)}')
-        if 'batch_results' not in st.session_state:
-            st.session_state.batch_results = []
-        if 'run_state' not in st.session_state:
-            st.session_state.run_state = 'stopped'
-        if 'start_time_ref' not in st.session_state:
-            st.session_state.start_time_ref = None
-        col_a, col_b, col_c = st.columns(3)
-        if col_a.button('▶️ Start / Resume'):
-            st.session_state.run_state = 'running'
-            if st.session_state.start_time_ref is None:
-                st.session_state.start_time_ref = time.time()
-        if col_b.button('⏸️ Pause'):
-            st.session_state.run_state = 'paused'
-        if col_c.button('⏹️ Stop & Reset'):
-            st.session_state.run_state = 'stopped'
-            st.session_state.batch_results = []
-            st.session_state.start_time_ref = None
-            st.rerun()
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        live_table = st.empty()
-        total = len(eids)
-        successes = 0
-        for idx, eid in enumerate(eids):
-            while st.session_state.run_state == 'paused':
-                status_text.warning('Paused...')
-                time.sleep(1)
-            if st.session_state.run_state == 'stopped':
-                break
-            if idx < len(st.session_state.batch_results):
-                progress_bar.progress((idx + 1) / total)
-                status_text.info(f"Skipping {idx+1}/{total} - already processed")
-                continue
-            status_text.info(f'Processing {idx+1}/{total}: {eid}')
-            start = time.time()
-            try:
-                res_list = run_extractors_on_eid(eid)
-                if res_list:
-                    for r in res_list:
-                        st.session_state.batch_results.append(r)
-                        if r.get('FullName') and r.get('FullName') not in ['Not Found', 'Error', 'Timeout/Not Found', 'Input Not Found']:
-                            successes += 1
-                else:
-                    st.session_state.batch_results.append({
-                        "EID": eid,
-                        "FullName": 'Not Found',
-                        'MobileNumber': 'Not Found',
-                        'Source': 'None'
-                    })
-            except Exception as e:
-                st.session_state.batch_results.append({
-                    "EID": eid,
-                    "FullName": 'Error',
-                    'MobileNumber': str(e),
-                    'Source': 'Exception'
-                })
-            elapsed = int(time.time() - start)
-            progress_bar.progress((idx + 1) / total)
-            live_df = pd.DataFrame(st.session_state.batch_results)
-            live_table.dataframe(live_df, use_container_width=True)
-            time.sleep(0.2)
-        if st.session_state.run_state == 'running' and len(st.session_state.batch_results) >= total:
-            st.success(f'Batch finished. Found: {successes} / {total}. Total time: {str(timedelta(seconds=int(time.time()-st.session_state.start_time_ref)))}')
-            result_df = pd.DataFrame(st.session_state.batch_results)
-            st.download_button('Download full results (CSV)', result_df.to_csv(index=False).encode('utf-8'), file_name='batch_results.csv')
-            beep()
