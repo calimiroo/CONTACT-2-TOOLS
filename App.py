@@ -11,6 +11,8 @@ import os
 import sys
 import tempfile
 import re
+import subprocess
+import shutil
 from datetime import datetime, timedelta
 
 # Selenium / undetected_chromedriver
@@ -27,18 +29,42 @@ def beep():
         import winsound
         winsound.Beep(1000, 300)
     except Exception:
-        pass  # Beep is visible in terminal usually as \a but ignored here to avoid errors
+        pass
 
 def get_chrome_version():
-    try:
-        if sys.platform == 'win32':
+    """
+    Detects Chrome version on Linux (Streamlit Cloud) or Windows.
+    Returns 144 as a safe fallback if detection fails to avoid SessionNotCreated error.
+    """
+    # 1. Try detecting on Linux/Streamlit Cloud
+    if sys.platform != 'win32':
+        try:
+            # Common paths for Chrome on Linux
+            for exe in ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']:
+                path = shutil.which(exe)
+                if path:
+                    # Run command: google-chrome --version
+                    out = subprocess.check_output([path, '--version']).decode('utf-8').strip()
+                    # Output example: "Google Chrome 144.0.7559.109"
+                    # We need the first number: 144
+                    version_str = out.split()[-1].split('.')[0]
+                    if version_str.isdigit():
+                        return int(version_str)
+        except Exception:
+            pass
+
+    # 2. Try detecting on Windows
+    if sys.platform == 'win32':
+        try:
             import winreg
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon")
             version, _ = winreg.QueryValueEx(key, "version")
             return int(version.split('.')[0])
-    except Exception:
-        pass
-    return None
+        except Exception:
+            pass
+
+    # 3. Fallback: Force version 144 (Matches your current error message)
+    return 144
 
 class RobustChrome(uc.Chrome):
     def __del__(self):
@@ -76,16 +102,16 @@ def get_shadow_element(driver, selector):
 
 def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
     options = uc.ChromeOptions()
-    # UPDATED: Use headless=new for better detection avoidance
     if headless:
         options.add_argument('--headless=new') 
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=en-US')
-    options.add_argument('--disable-blink-features=AutomationControlled') # Extra safety
+    options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
 
+    # Get version (Force 144 if detection fails)
     version = get_chrome_version()
 
     driver = None
@@ -163,7 +189,7 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
         if lang_force and re.search(r'[\u0600-\u06FF]', name or ''):
             try:
                 driver.execute_script("window.location.href = window.location.href.split('?')[0] + '?lang=en';")
-                time.sleep(3) # Increased wait slightly
+                time.sleep(3) 
                 full_name_el = get_shadow_element(driver, '#FullName')
                 if full_name_el:
                     name = driver.execute_script("return arguments[0] ? (arguments[0].value || arguments[0].innerText) : 'Not Found';", full_name_el)
@@ -200,7 +226,6 @@ def extract_mohre_single(eid, headless=True, lang_force=True, wait_extra=0):
 
 def extract_dcd_single(eid, headless=True, wait_extra=0):
     options = uc.ChromeOptions()
-    # UPDATED: Use headless=new
     if headless:
         options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -212,9 +237,8 @@ def extract_dcd_single(eid, headless=True, wait_extra=0):
     options.add_argument('--lang=en-US')
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
 
+    # Get version (Force 144 if detection fails)
     version = get_chrome_version()
-    if not version:
-        version = None
 
     driver = None
     try:
@@ -330,7 +354,7 @@ with col_top[0]:
     extractor_mode = st.selectbox(
         'Extractor Mode',
         ['Both (TOOL1 + TOOL2)', 'TOOL1 only', 'TOOL2 only'],
-        index=1  # هنا index=1 يجعل TOOL1 only هو الافتراضي
+        index=1
     )
 with col_top[1]:
     wait_multiplier = st.slider('Delay multiplier (speed vs reliability)', 0.0, 5.0, 0.5, 0.1)
@@ -367,7 +391,6 @@ with tab1:
                 else:
                     df = pd.DataFrame(aggregated)
                     st.write('Live results:')
-                    # UPDATED: Just use standard dataframe to avoid styling warnings
                     st.dataframe(df, use_container_width=True)
                     
                     st.download_button('Download results (CSV)', df.to_csv(index=False).encode('utf-8'), file_name=f'result_{eid_input}.csv')
@@ -423,7 +446,7 @@ with tab2:
             st.session_state.run_state = 'stopped'
             st.session_state.batch_results = []
             st.session_state.start_time_ref = None
-            st.experimental_rerun()
+            st.rerun()
 
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -469,7 +492,6 @@ with tab2:
             elapsed = int(time.time() - start)
             progress_bar.progress((idx + 1) / total)
             live_df = pd.DataFrame(st.session_state.batch_results)
-            # UPDATED: Ensure no styling warnings here
             live_table.dataframe(live_df, use_container_width=True)
             time.sleep(0.2)
 
